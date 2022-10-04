@@ -1,0 +1,215 @@
+"""IDS 703
+Assignment 4 - Part of Speech Tagging
+Nick Carroll
+2022"""
+
+import numpy as np
+import viterbi
+
+pos = [
+    "DET",
+    "NOUN",
+    "ADP",
+    "NUM",
+    "VERB",
+    "ADJ",
+    "ADV",
+    "CONJ",
+    ".",
+    "PRT",
+    "PRON",
+    "X",
+]
+
+# Count all of the POS tags and POS transitions for each word in the training corpus
+def trainingCounts(corpus):
+    # Create empty dictionaries for the POS tags for each word and the POS transitions
+    posCounts = {}
+    posTransitions = {}
+    initialConditions = {}
+    # Iterate through each sentence in the corpus
+    for eachSentence in corpus:
+        # Iterate through each word in each sentence
+        for eachItem in range(len(eachSentence)):
+            # Capture the word and part of speech of each word without losing the index location
+            eachWord, associatedPOS = eachSentence[eachItem]
+            eachWord = eachWord.lower()
+            # Create a dictionary counting each part of speech for each word
+            if eachWord in posCounts:
+                if associatedPOS in posCounts[eachWord]:
+                    posCounts[eachWord][associatedPOS] += 1
+                    pass
+                else:
+                    posCounts[eachWord][associatedPOS] = 1
+                    pass
+                pass
+            else:
+                posCounts[eachWord] = {associatedPOS: 1}
+                pass
+            pass
+            # Create a dictionary counting each part of speech transition
+            if associatedPOS in posTransitions:
+                # Use a special case for the first word in the sentence
+                if eachItem != 0:
+                    if eachSentence[eachItem - 1][1] in posTransitions[associatedPOS]:
+                        posTransitions[associatedPOS][
+                            eachSentence[eachItem - 1][1]
+                        ] += 1
+                        pass
+                    else:
+                        posTransitions[associatedPOS][eachSentence[eachItem - 1][1]] = 1
+                        pass
+                    pass
+                else:
+                    if "." in posTransitions[associatedPOS]:
+                        posTransitions[associatedPOS]["."] += 1
+                        pass
+                    else:
+                        posTransitions[associatedPOS]["."] = 1
+                        pass
+                    # Count the number of times each part of speech is the first word in a sentence
+                    if associatedPOS in initialConditions:
+                        initialConditions[associatedPOS] += 1
+                        pass
+                    else:
+                        initialConditions[associatedPOS] = 1
+                        pass
+                    pass
+                pass
+            else:
+                # Use a special case for the first word in the sentence
+                if eachItem != 0:
+                    posTransitions[associatedPOS] = {eachSentence[eachItem - 1][1]: 1}
+                    pass
+                else:
+                    posTransitions[associatedPOS] = {".": 1}
+                    pass
+                    # Count the number of times each part of speech is the first word in a sentence
+                    if associatedPOS in initialConditions:
+                        initialConditions[associatedPOS] += 1
+                        pass
+                    else:
+                        initialConditions[associatedPOS] = 1
+                        pass
+                    pass
+                pass
+            pass
+        pass
+    return posCounts, posTransitions, initialConditions
+
+
+# Create a matrix to calculate the probability of each part for a given word
+def probabilityMatrix(posCounts, pos):
+    # Create empty lists for the matrix and the unknown words, and an empty dictionary to track the locations of each word in the matrix
+    bMatrix = []
+    unk = [1] * len(pos)
+    wordRow = {}
+    row = 0
+    # Iterate through each word in the dictionary to create the matrix
+    for eachWord in posCounts:
+        # Create a list for the row in the matrix for each word
+        wordPOS = []
+        # Iterate through each part of speech for each word
+        for eachPOS in pos:
+            # Append the count of each part of speech for the matrix with +1 smoothing
+            if eachPOS in posCounts[eachWord]:
+                wordPOS.append(posCounts[eachWord][eachPOS] + 1)
+                pass
+            # Append 1 for smoothing if the part of speech is not associated with the word in the dictionary
+            else:
+                wordPOS.append(1)
+                pass
+            pass
+        # Append the row to the matrix
+        if sum(wordPOS) > len(wordPOS):
+            # Transform counts into probabilities
+            wordPOSsum = sum(wordPOS)
+            wordPOS = [x / wordPOSsum for x in wordPOS]
+            bMatrix.append(wordPOS)
+            # Track the row location of each word in the matrix
+            wordRow[eachWord] = row
+            row += 1
+            pass
+        # Track words that only show in the training set once as unknown words
+        else:
+            unk = [unk[i] + wordPOS[i] for i in range(len(wordPOS))]
+            pass
+        pass
+    # Transform counts of "unknown" words into probabilities and append to the end of the matrix
+    unksum = sum(unk)
+    unk = [x / unksum for x in unk]
+    bMatrix.append(unk)
+    wordRow["unk"] = row
+    # Transfrom matrix into a numpy array
+    b = np.array(bMatrix)
+    return b, wordRow
+
+
+# Create a transition matrix for the parts of speech
+def transitionMatrix(posTransitions, pos):
+    aMatrix = []
+    for eachPOS in pos:
+        eachRow = []
+        for eachCol in pos:
+            if eachPOS in posTransitions:
+                if eachCol in posTransitions[eachPOS]:
+                    eachRow.append(posTransitions[eachPOS][eachCol] + 1)
+                    pass
+                else:
+                    eachRow.append(1)
+                    pass
+                pass
+            else:
+                eachRow = [1] * len(pos)
+                pass
+            pass
+        rowSum = sum(eachRow)
+        eachRow = [x / rowSum for x in eachRow]
+        aMatrix.append(eachRow)
+        pass
+    a = np.array(aMatrix)
+    return a
+
+
+# Transform initial condition counts into probabilities and create a matrix
+def initialConditionsMatrix(initialConditions, pos):
+    for each in pos:
+        if each in initialConditions:
+            initialConditions[each] += 1
+            pass
+        else:
+            initialConditions[each] = 1
+            pass
+        pass
+    initialConditions = [initialConditions[each] for each in pos]
+    icSum = sum(initialConditions)
+    initialConditions = [x / icSum for x in initialConditions]
+    ic = np.array(initialConditions)
+    return ic
+
+
+# Find the matrix row associated with a word
+def stringToRow(word, wordRow):
+    if word in wordRow:
+        return wordRow[word]
+    else:
+        return wordRow["unk"]
+
+
+def viterbiFunction(obs, icMatrix, aMatrix, bMatrix):
+    return viterbi.viterbi(obs, icMatrix, aMatrix, bMatrix)
+
+
+if __name__ == "__main__":
+    import nltk
+
+    corpus = nltk.corpus.brown.tagged_sents(tagset="universal")
+    posCounts, posTransitions, initialConditions = trainingCounts(corpus[:10000])
+    aMatrix = transitionMatrix(posTransitions, pos)
+    bMatrix, wordRow = probabilityMatrix(posCounts, pos)
+    icMatrix = initialConditionsMatrix(initialConditions, pos)
+    strObs = [tup[0].lower() for sentence in corpus[10150:10153] for tup in sentence]
+    obs = [stringToRow(eachOb, wordRow) for eachOb in strObs]
+    intPOS = viterbiFunction(obs, icMatrix, aMatrix, bMatrix.T)[0]
+    retPOS = list(map(lambda x: pos[x], intPOS))
+    print([(strObs[i], retPOS[i]) for i in range(len(strObs))])
