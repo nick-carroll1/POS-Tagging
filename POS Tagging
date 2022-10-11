@@ -212,4 +212,25 @@ if __name__ == "__main__":
     obs = [stringToRow(eachOb, wordRow) for eachOb in strObs]
     intPOS = viterbiFunction(obs, icMatrix, aMatrix, bMatrix.T)[0]
     retPOS = list(map(lambda x: pos[x], intPOS))
-    print([(strObs[i], retPOS[i]) for i in range(len(strObs))])
+    print(f"Returned: {[(strObs[i], retPOS[i]) for i in range(len(strObs))]}")
+    expectedPOS = [tup[1] for sentence in corpus[10150:10153] for tup in sentence]
+    incorrectTags = []
+    for i in range(len(expectedPOS)):
+        if expectedPOS[i] != retPOS[i]:
+            incorrectTags.append((strObs[i], expectedPOS[i], retPOS[i]))
+            pass
+        pass
+    print(
+        f"The part of speech tagger correctly labeled: {(1-len(incorrectTags)/len(expectedPOS))*100:.2f}% of the words in the {len(expectedPOS)} word test set."
+    )
+    print(f"Incorrect tags: {incorrectTags}")
+    for eachTag in incorrectTags:
+        if eachTag[0] in posCounts:
+            print(
+                f"{eachTag[0]} had following parts of speech in the training set: {posCounts[eachTag[0]]}."
+            )
+            pass
+        else:
+            print(f"{eachTag[0]} is not in the training set.")
+            pass
+        pass
